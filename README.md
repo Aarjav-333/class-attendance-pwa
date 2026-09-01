@@ -4,9 +4,14 @@ A fast, mobile-first Progressive Web App for marking student attendance. Built f
 use on an iPhone: pick the subject and hour, tap the handful of students who differ from the
 default, save. Records live in Supabase and stay editable and exportable afterwards.
 
+- **Live:** https://class-attendance-pwa-wine.vercel.app
 - **Stack:** Next.js 15 (App Router) · React 19 · TypeScript · Tailwind CSS · Supabase
 - **Deploy target:** Vercel
-- **Install:** Safari → Share → *Add to Home Screen*
+- **Install:** open the live URL in Safari → Share → *Add to Home Screen*
+
+> **Redeploying:** run `vercel deploy --prod` from the project folder. To get automatic
+> deploys on every `git push` instead, open the project on vercel.com → **Settings → Git**
+> → **Connect Git Repository**, and authorise the Vercel GitHub App for this private repo.
 
 ---
 
