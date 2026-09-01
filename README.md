@@ -188,6 +188,11 @@ that key alone, an unauthenticated request can read no student names and write n
 | `attendance_sessions` | none | read / insert / update / delete |
 | `attendance_records` | none | read / insert / update / delete |
 
+Both layers are set explicitly by the script: table **grants** decide whether a role may touch
+a table at all, and **RLS policies** decide which rows. Because the grants are written out in
+full, the setup works whether or not the project option *Automatically expose new tables* is
+enabled - you can safely leave that switch off, which is what Supabase recommends.
+
 The roster is intentionally **not writable from the app** — add or edit students and subjects from
 the Supabase SQL editor, where you are the service role. That keeps the class list from being
 changed by accident mid-lesson.

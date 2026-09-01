@@ -351,11 +351,37 @@ create policy "records deletable by authenticated"
   using (true);
 
 -- 8.4 Grants ---------------------------------------------------------------
-revoke all on function public.save_attendance(date, uuid, integer, jsonb, boolean) from public, anon;
-grant execute on function public.save_attendance(date, uuid, integer, jsonb, boolean) to authenticated;
+--  RLS decides WHICH ROWS a role may touch; grants decide whether the role may
+--  touch the table at all. Both are set explicitly here so the script does not
+--  depend on the project setting "Automatically expose new tables" - it works
+--  whether that option is on or off.
+--
+--  anon is deliberately left with nothing: the public key alone cannot read a
+--  single student name.
+-- ---------------------------------------------------------------------------
+grant usage on schema public to anon, authenticated, service_role;
 
-grant select on public.attendance_session_summary to authenticated;
-revoke all on public.attendance_session_summary from anon;
+-- Roster: readable by signed-in teachers, fully managed by the service role.
+revoke all on public.students from anon, authenticated;
+revoke all on public.subjects from anon, authenticated;
+grant select on public.students to authenticated;
+grant select on public.subjects to authenticated;
+grant select, insert, update, delete on public.students to service_role;
+grant select, insert, update, delete on public.subjects to service_role;
+
+-- Attendance: signed-in teachers have full control.
+revoke all on public.attendance_sessions from anon, authenticated;
+revoke all on public.attendance_records from anon, authenticated;
+grant select, insert, update, delete on public.attendance_sessions to authenticated, service_role;
+grant select, insert, update, delete on public.attendance_records to authenticated, service_role;
+
+-- History summary view.
+revoke all on public.attendance_session_summary from anon, authenticated;
+grant select on public.attendance_session_summary to authenticated, service_role;
+
+-- The transactional write path.
+revoke all on function public.save_attendance(date, uuid, integer, jsonb, boolean) from public, anon;
+grant execute on function public.save_attendance(date, uuid, integer, jsonb, boolean) to authenticated, service_role;
 
 -- ---------------------------------------------------------------------------
 -- 9. Seed: subjects
