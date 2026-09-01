@@ -64,6 +64,6 @@ export const config = {
      * Everything except Next.js internals, the PWA files that must stay
      * reachable while signed out, and static assets.
      */
-    '/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|icons/|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico|woff2?)$).*)',
+    '/((?!_next/static|_next/image|favicon.ico|manifest.webmanifest|sw.js|offline.html|icons/|.*\\.(?:png|jpg|jpeg|gif|svg|webp|ico|woff2?|html|txt|xml)$).*)',
   ],
 };
