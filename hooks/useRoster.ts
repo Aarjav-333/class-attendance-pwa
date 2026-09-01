@@ -2,20 +2,23 @@
 
 import { useCallback, useEffect, useRef, useState } from 'react';
 
-import { describeError, fetchStudents, fetchSubjects } from '@/lib/attendance';
+import { describeError, fetchEnrollments, fetchStudents, fetchSubjects } from '@/lib/attendance';
 import { ROSTER_CACHE_KEY } from '@/lib/constants';
 import { isSupabaseConfigured } from '@/lib/supabase/client';
-import type { Student, Subject } from '@/types';
+import type { EnrollmentMap, Student, Subject } from '@/types';
 
 interface RosterCache {
   students: Student[];
   subjects: Subject[];
+  enrollments: EnrollmentMap;
   savedAt: number;
 }
 
 interface RosterState {
   students: Student[];
   subjects: Subject[];
+  /** subjectId -> enrolled studentIds, for the elective subjects. */
+  enrollments: EnrollmentMap;
   loading: boolean;
   error: string | null;
   /** True while showing cached data because the network request failed. */
@@ -33,6 +36,7 @@ function readCache(): RosterCache | null {
     return {
       students: parsed.students,
       subjects: parsed.subjects,
+      enrollments: parsed.enrollments ?? {},
       savedAt: typeof parsed.savedAt === 'number' ? parsed.savedAt : 0,
     };
   } catch {
@@ -40,10 +44,10 @@ function readCache(): RosterCache | null {
   }
 }
 
-function writeCache(students: Student[], subjects: Subject[]): void {
+function writeCache(students: Student[], subjects: Subject[], enrollments: EnrollmentMap): void {
   if (typeof window === 'undefined') return;
   try {
-    const payload: RosterCache = { students, subjects, savedAt: Date.now() };
+    const payload: RosterCache = { students, subjects, enrollments, savedAt: Date.now() };
     window.localStorage.setItem(ROSTER_CACHE_KEY, JSON.stringify(payload));
   } catch {
     // Ignore quota / private-mode failures.
@@ -61,6 +65,7 @@ export function useRoster(): RosterState & { reload: () => void } {
   const [state, setState] = useState<RosterState>({
     students: [],
     subjects: [],
+    enrollments: {},
     loading: true,
     error: null,
     stale: false,
@@ -81,6 +86,7 @@ export function useRoster(): RosterState & { reload: () => void } {
       setState({
         students: [],
         subjects: [],
+        enrollments: {},
         loading: false,
         error: 'Supabase is not configured yet.',
         stale: false,
@@ -93,6 +99,7 @@ export function useRoster(): RosterState & { reload: () => void } {
       setState({
         students: cached.students,
         subjects: cached.subjects,
+        enrollments: cached.enrollments,
         loading: true,
         error: null,
         stale: false,
@@ -103,11 +110,15 @@ export function useRoster(): RosterState & { reload: () => void } {
 
     (async () => {
       try {
-        const [students, subjects] = await Promise.all([fetchStudents(), fetchSubjects()]);
+        const [students, subjects, enrollments] = await Promise.all([
+          fetchStudents(),
+          fetchSubjects(),
+          fetchEnrollments(),
+        ]);
         if (cancelled || !mountedRef.current) return;
 
-        writeCache(students, subjects);
-        setState({ students, subjects, loading: false, error: null, stale: false });
+        writeCache(students, subjects, enrollments);
+        setState({ students, subjects, enrollments, loading: false, error: null, stale: false });
       } catch (error) {
         if (cancelled || !mountedRef.current) return;
 
@@ -115,7 +126,7 @@ export function useRoster(): RosterState & { reload: () => void } {
         setState((previous) =>
           previous.students.length > 0
             ? { ...previous, loading: false, error: null, stale: true }
-            : { students: [], subjects: [], loading: false, error: message, stale: false },
+            : { students: [], subjects: [], enrollments: {}, loading: false, error: message, stale: false },
         );
       }
     })();

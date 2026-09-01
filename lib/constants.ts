@@ -29,7 +29,7 @@ export function isValidPeriod(period: number | null | undefined): period is numb
 /** localStorage keys. */
 export const DRAFT_STORAGE_PREFIX = 'attendance:draft:v1:';
 export const LAST_CLASS_STORAGE_KEY = 'attendance:last-class:v1';
-export const ROSTER_CACHE_KEY = 'attendance:roster:v1';
+export const ROSTER_CACHE_KEY = 'attendance:roster:v2';
 
 /** Drafts older than this are pruned on load. */
 export const DRAFT_MAX_AGE_MS = 7 * 24 * 60 * 60 * 1000;

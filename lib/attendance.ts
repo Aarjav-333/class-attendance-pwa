@@ -5,6 +5,7 @@ import {
   toSubject,
   type AttendanceCounts,
   type AttendanceStatus,
+  type EnrollmentMap,
   type SessionDetail,
   type SessionSummary,
   type StatusMap,
@@ -16,6 +17,7 @@ import type {
   AttendanceSessionRow,
   AttendanceSessionSummaryRow,
   StudentRow,
+  SubjectEnrollmentRow,
   SubjectRow,
 } from '@/types/database';
 
@@ -76,13 +78,52 @@ export async function fetchSubjects(): Promise<Subject[]> {
   const supabase = getSupabaseClient();
   const { data, error } = await supabase
     .from('subjects')
-    .select('id, code, name, active, sort_order, created_at, updated_at')
+    .select('id, code, name, active, elective, sort_order, created_at, updated_at')
     .eq('active', true)
     .order('sort_order', { ascending: true })
     .order('code', { ascending: true });
 
   if (error) throw new Error(error.message);
   return ((data ?? []) as SubjectRow[]).map(toSubject);
+}
+
+/**
+ * Who sits which elective, as subjectId -> studentIds.
+ *
+ * The whole table is a few dozen rows, so it is fetched once alongside the
+ * roster and the per-subject list is then worked out locally. Switching
+ * between CF and OR costs nothing.
+ */
+export async function fetchEnrollments(): Promise<EnrollmentMap> {
+  const supabase = getSupabaseClient();
+  const { data, error } = await supabase
+    .from('subject_enrollments')
+    .select('subject_id, student_id');
+
+  if (error) throw new Error(error.message);
+
+  const map: EnrollmentMap = {};
+  for (const row of (data ?? []) as Pick<SubjectEnrollmentRow, 'subject_id' | 'student_id'>[]) {
+    (map[row.subject_id] ??= []).push(row.student_id);
+  }
+  return map;
+}
+
+/**
+ * The students who sit a given subject.
+ *
+ * Electives (CF, OR) use their enrolment list; every other subject is taken by
+ * the whole active roster. With no subject chosen yet, the full roster is shown.
+ */
+export function rosterForSubject(
+  students: Student[],
+  subject: Subject | null,
+  enrollments: EnrollmentMap,
+): Student[] {
+  if (!subject || !subject.elective) return students;
+
+  const enrolled = new Set(enrollments[subject.id] ?? []);
+  return students.filter((student) => enrolled.has(student.id));
 }
 
 // ---------------------------------------------------------------------------
@@ -185,7 +226,7 @@ export async function fetchSessionDetail(sessionId: string): Promise<SessionDeta
 
   const subject =
     subjects.find((item) => item.id === session.subject_id) ??
-    ({ id: session.subject_id, code: 'N/A', name: 'Unknown subject' } satisfies Subject);
+    ({ id: session.subject_id, code: 'N/A', name: 'Unknown subject', elective: false } satisfies Subject);
 
   const statusByStudent = new Map<string, AttendanceStatus>(
     records.map((record) => [record.student_id, record.status]),

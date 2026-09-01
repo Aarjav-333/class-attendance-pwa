@@ -62,17 +62,23 @@ create table if not exists public.students (
 );
 
 -- 3.2 subjects -------------------------------------------------------------
+--  elective = true means only the students listed in subject_enrollments sit
+--  this subject. false (the default) means the whole active roster does.
 create table if not exists public.subjects (
   id         uuid primary key default gen_random_uuid(),
   code       text        not null,
   name       text        not null,
   active     boolean     not null default true,
+  elective   boolean     not null default false,
   sort_order integer     not null default 0,
   created_at timestamptz not null default now(),
   updated_at timestamptz not null default now(),
   constraint subjects_code_key unique (code),
   constraint subjects_code_not_blank check (length(btrim(code)) > 0)
 );
+
+-- Added after the first release, so existing projects need it too.
+alter table public.subjects add column if not exists elective boolean not null default false;
 
 -- 3.3 attendance_sessions --------------------------------------------------
 --  One row per (date + subject + period). The unique constraint is what makes
@@ -104,9 +110,26 @@ create table if not exists public.attendance_records (
   constraint attendance_records_unique_student_per_session unique (attendance_session_id, student_id)
 );
 
+-- 3.5 subject_enrollments ---------------------------------------------------
+--  Which students sit an elective. Only used for subjects flagged elective;
+--  everyone sits the rest, so those subjects have no rows here.
+create table if not exists public.subject_enrollments (
+  id         uuid primary key default gen_random_uuid(),
+  subject_id uuid        not null references public.subjects (id) on delete cascade,
+  student_id uuid        not null references public.students (id) on delete cascade,
+  created_at timestamptz not null default now(),
+  constraint subject_enrollments_unique_pair unique (subject_id, student_id)
+);
+
 -- ---------------------------------------------------------------------------
 -- 4. Indexes
 -- ---------------------------------------------------------------------------
+create index if not exists subject_enrollments_subject_idx
+  on public.subject_enrollments (subject_id);
+
+create index if not exists subject_enrollments_student_idx
+  on public.subject_enrollments (student_id);
+
 create index if not exists students_roll_number_idx
   on public.students (roll_number) where active;
 
@@ -279,6 +302,7 @@ comment on function public.save_attendance is
 -- ---------------------------------------------------------------------------
 alter table public.students            enable row level security;
 alter table public.subjects            enable row level security;
+alter table public.subject_enrollments enable row level security;
 alter table public.attendance_sessions enable row level security;
 alter table public.attendance_records  enable row level security;
 
@@ -292,6 +316,12 @@ create policy "students readable by authenticated"
 drop policy if exists "subjects readable by authenticated" on public.subjects;
 create policy "subjects readable by authenticated"
   on public.subjects for select
+  to authenticated
+  using (true);
+
+drop policy if exists "enrollments readable by authenticated" on public.subject_enrollments;
+create policy "enrollments readable by authenticated"
+  on public.subject_enrollments for select
   to authenticated
   using (true);
 
@@ -364,10 +394,13 @@ grant usage on schema public to anon, authenticated, service_role;
 -- Roster: readable by signed-in teachers, fully managed by the service role.
 revoke all on public.students from anon, authenticated;
 revoke all on public.subjects from anon, authenticated;
+revoke all on public.subject_enrollments from anon, authenticated;
 grant select on public.students to authenticated;
 grant select on public.subjects to authenticated;
+grant select on public.subject_enrollments to authenticated;
 grant select, insert, update, delete on public.students to service_role;
 grant select, insert, update, delete on public.subjects to service_role;
+grant select, insert, update, delete on public.subject_enrollments to service_role;
 
 -- Attendance: signed-in teachers have full control.
 revoke all on public.attendance_sessions from anon, authenticated;
@@ -386,15 +419,18 @@ grant execute on function public.save_attendance(date, uuid, integer, jsonb, boo
 -- ---------------------------------------------------------------------------
 -- 9. Seed: subjects
 -- ---------------------------------------------------------------------------
-insert into public.subjects (code, name, sort_order) values
-  ('DL',  'Digital Logic',                   1),
-  ('OR',  'Operations Research',             2),
-  ('CF',  'Computer Fundamentals',           3),
-  ('DS',  'Data Structures',                 4),
-  ('DAA', 'Design and Analysis of Algorithms', 5)
+--  CF and OR are the two electives: each student sits one or the other, so
+--  their rosters come from subject_enrollments (seeded in section 11).
+insert into public.subjects (code, name, sort_order, elective) values
+  ('DL',  'Digital Logic',                     1, false),
+  ('OR',  'Operations Research',               2, true),
+  ('CF',  'Computer Fundamentals',             3, true),
+  ('DS',  'Data Structures',                   4, false),
+  ('DAA', 'Design and Analysis of Algorithms', 5, false)
 on conflict (code) do update
   set name       = excluded.name,
       sort_order = excluded.sort_order,
+      elective   = excluded.elective,
       active     = true;
 
 -- ---------------------------------------------------------------------------
@@ -465,8 +501,53 @@ on conflict (roll_number) do update
       active = true;
 
 -- ---------------------------------------------------------------------------
--- 11. Sanity check - should report 57 students and 5 subjects
+-- 11. Seed: elective enrolment (CF and OR)
+--     Every student sits exactly one of the two: the 33 listed below take CF,
+--     the remaining 24 take OR. DL, DS and DAA are taken by the whole class
+--     and therefore have no rows here.
+--
+--     The two elective rosters are rebuilt from scratch on every run, so
+--     editing the list below and re-running this script re-syncs them exactly.
+-- ---------------------------------------------------------------------------
+delete from public.subject_enrollments
+where subject_id in (select id from public.subjects where code in ('CF', 'OR'));
+
+-- 11.1 CF - Computer Fundamentals (33 students) ------------------------------
+insert into public.subject_enrollments (subject_id, student_id)
+select sub.id, st.id
+from public.subjects sub
+cross join public.students st
+where sub.code = 'CF'
+  and st.roll_number in (
+     2,  3,  4,  5,  6,  8,  9, 11, 12, 13,
+    18, 19, 20, 21, 22, 23, 26, 27, 28, 32,
+    33, 36, 37, 39, 41, 45, 46, 47, 50, 55,
+    56, 57, 59
+  )
+on conflict (subject_id, student_id) do nothing;
+
+-- 11.2 OR - Operations Research (everyone not sitting CF: 24 students) -------
+insert into public.subject_enrollments (subject_id, student_id)
+select sub.id, st.id
+from public.subjects sub
+cross join public.students st
+where sub.code = 'OR'
+  and st.roll_number not in (
+     2,  3,  4,  5,  6,  8,  9, 11, 12, 13,
+    18, 19, 20, 21, 22, 23, 26, 27, 28, 32,
+    33, 36, 37, 39, 41, 45, 46, 47, 50, 55,
+    56, 57, 59
+  )
+on conflict (subject_id, student_id) do nothing;
+
+-- ---------------------------------------------------------------------------
+-- 12. Sanity check
+--     Expected: 57 students, 5 subjects, CF 33, OR 24, CF + OR = 57
 -- ---------------------------------------------------------------------------
 select
-  (select count(*) from public.students where active) as active_students,
-  (select count(*) from public.subjects where active) as active_subjects;
+  (select count(*) from public.students where active)                 as active_students,
+  (select count(*) from public.subjects where active)                 as active_subjects,
+  (select count(*) from public.subject_enrollments e
+     join public.subjects s on s.id = e.subject_id where s.code = 'CF') as cf_students,
+  (select count(*) from public.subject_enrollments e
+     join public.subjects s on s.id = e.subject_id where s.code = 'OR') as or_students;

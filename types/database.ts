@@ -25,9 +25,18 @@ export type SubjectRow = {
   code: string;
   name: string;
   active: boolean;
+  /** true when only enrolled students sit this subject (CF and OR). */
+  elective: boolean;
   sort_order: number;
   created_at: string;
   updated_at: string;
+};
+
+export type SubjectEnrollmentRow = {
+  id: string;
+  subject_id: string;
+  student_id: string;
+  created_at: string;
 };
 
 export type AttendanceSessionRow = {
@@ -85,6 +94,13 @@ export type Database = {
         Row: SubjectRow;
         Insert: Partial<SubjectRow> & Pick<SubjectRow, 'code' | 'name'>;
         Update: Partial<SubjectRow>;
+        Relationships: [];
+      };
+      subject_enrollments: {
+        Row: SubjectEnrollmentRow;
+        Insert: Partial<SubjectEnrollmentRow> &
+          Pick<SubjectEnrollmentRow, 'subject_id' | 'student_id'>;
+        Update: Partial<SubjectEnrollmentRow>;
         Relationships: [];
       };
       attendance_sessions: {

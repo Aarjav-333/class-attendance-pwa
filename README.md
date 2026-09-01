@@ -52,6 +52,8 @@ Switching modes when marks exist asks first, and offers *Switch and keep my mark
 **Everything else**
 
 - Live present/absent/total counters in the sticky header, always visible while scrolling
+- CF and OR are electives: each shows only its enrolled students (33 and 24). DL, DS and DAA
+  show the whole class of 57
 - Search by name or roll number (never changes attendance state)
 - Mark All Present / Mark All Absent / Reset, each guarded when it would destroy marks
 - Duplicate-proof saving: one session per date + subject + hour, enforced in the database
@@ -102,7 +104,8 @@ types/
 public/
   manifest.webmanifest  sw.js  offline.html  icons/
 
-supabase/setup.sql        the entire database: run once
+supabase/setup.sql        the entire database: run once on a new project
+supabase/002-elective-enrollments.sql  adds CF/OR electives to an existing project
 scripts/generate-icons.mjs  regenerates the PNG icon set
 middleware.ts             session refresh + route protection
 ```
@@ -114,7 +117,7 @@ UI components never import the Supabase client directly; all data access goes th
 
 ## Database design
 
-Four tables, one view, one function. All of it is in **`supabase/setup.sql`**, which is
+Five tables, one view, one function. All of it is in **`supabase/setup.sql`**, which is
 idempotent — running it twice is safe.
 
 ```
@@ -148,6 +151,12 @@ subjects                students
   impossible at the database level, not just in the UI.
 - `attendance_records_unique_student_per_session` makes a student appear at most once per session.
 - `period BETWEEN 1 AND 12` and `roll_number > 0` are checked in the database.
+- `subject_enrollments_unique_pair` stops a student being enrolled twice in the same elective.
+
+**Electives.** `subjects.elective` marks CF and OR. For those two, the class roster comes from
+`subject_enrollments`; for every other subject it is the whole active roster. The app fetches the
+enrolment table once with the roster and works the per-subject list out locally, so switching
+between CF and OR is instant.
 
 **Indexes** cover the queries the app actually runs: history by date, history by subject, records
 by session, records by student, plus partial indexes on the active roster.
@@ -417,6 +426,23 @@ creating a second session.
 | `NEXT_PUBLIC_SUPABASE_URL` | — | Supabase project URL (required) |
 | `NEXT_PUBLIC_SUPABASE_ANON_KEY` | — | Supabase anon / publishable key (required) |
 | `NEXT_PUBLIC_PERIOD_COUNT` | `6` | How many class hours to offer (1–12) |
+
+**Changing who sits an elective.** Edit the roll-number lists in
+`supabase/002-elective-enrollments.sql` and re-run it. Both rosters are rebuilt from scratch on
+every run, so that file stays the source of truth. To make another subject an elective:
+
+```sql
+update public.subjects set elective = true where code = 'DS';
+
+insert into public.subject_enrollments (subject_id, student_id)
+select sub.id, st.id
+from public.subjects sub
+cross join public.students st
+where sub.code = 'DS'
+  and st.roll_number in (1, 2, 3);
+```
+
+Setting `elective = false` again makes a subject fall back to the whole class.
 
 **Changing the class list.** Edit the seed block at the end of `supabase/setup.sql` and re-run it,
 or insert directly:

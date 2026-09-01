@@ -29,6 +29,7 @@ import {
   describeError,
   fetchSessionDetail,
   findSessionForClass,
+  rosterForSubject,
   saveAttendance,
   SessionExistsError,
   type ExistingSession,
@@ -70,8 +71,15 @@ function MarkAttendanceScreen() {
 
   const editSessionId = searchParams.get('session');
 
-  const { students, subjects, loading: rosterLoading, error: rosterError, stale, reload } = useRoster();
-  const marking = useAttendanceMarking(students);
+  const {
+    students,
+    subjects,
+    enrollments,
+    loading: rosterLoading,
+    error: rosterError,
+    stale,
+    reload,
+  } = useRoster();
 
   const [date, setDate] = useState<string>(todayISO());
   const [subjectId, setSubjectId] = useState<string | null>(null);
@@ -93,6 +101,17 @@ function MarkAttendanceScreen() {
     () => subjects.find((item) => item.id === subjectId) ?? null,
     [subjects, subjectId],
   );
+
+  /**
+   * Who actually sits this class. CF and OR are electives, so their rosters are
+   * the enrolled subset; every other subject is taken by the whole class.
+   */
+  const rosterStudents = useMemo(
+    () => rosterForSubject(students, subject, enrollments),
+    [students, subject, enrollments],
+  );
+
+  const marking = useAttendanceMarking(rosterStudents);
   const classReady = Boolean(subjectId) && period !== null;
   const classKey = `${date}|${subjectId ?? ''}|${period ?? ''}`;
 
@@ -261,9 +280,9 @@ function MarkAttendanceScreen() {
   // --- Derived data ---------------------------------------------------------
   const filteredStudents = useMemo(() => {
     const term = normalise(query);
-    if (!term) return students;
+    if (!term) return rosterStudents;
 
-    return students.filter((student) => {
+    return rosterStudents.filter((student) => {
       const roll = String(student.rollNumber);
       return (
         normalise(student.name).includes(term) ||
@@ -271,20 +290,20 @@ function MarkAttendanceScreen() {
         formatRoll(student.rollNumber).includes(term)
       );
     });
-  }, [students, query]);
+  }, [rosterStudents, query]);
 
   const exportPayload: ExportPayload = useMemo(
     () => ({
       date,
       subjectCode: subject?.code ?? '--',
       period: period ?? 0,
-      entries: students.map((student) => ({
+      entries: rosterStudents.map((student) => ({
         student,
         status: marking.statuses[student.id] ?? DEFAULT_STATUS_FOR_MODE[marking.mode],
       })),
       counts: marking.counts,
     }),
-    [date, subject, period, students, marking.statuses, marking.counts, marking.mode],
+    [date, subject, period, rosterStudents, marking.statuses, marking.counts, marking.mode],
   );
 
   const defaultStatus = DEFAULT_STATUS_FOR_MODE[marking.mode];
@@ -332,8 +351,8 @@ function MarkAttendanceScreen() {
         showToast('Select the class hour first.', 'error');
         return;
       }
-      if (students.length === 0) {
-        showToast('The student list has not loaded yet.', 'error');
+      if (rosterStudents.length === 0) {
+        showToast('There are no students to save for this subject.', 'error');
         return;
       }
 
@@ -365,7 +384,7 @@ function MarkAttendanceScreen() {
         setSaving(false);
       }
     },
-    [subjectId, period, students.length, date, marking, editing, showToast],
+    [subjectId, period, rosterStudents.length, date, marking, editing, showToast],
   );
 
   const handleBack = useCallback(() => {
@@ -413,12 +432,12 @@ function MarkAttendanceScreen() {
               payload={exportPayload}
               label=""
               className="h-10 min-h-0 w-10 px-0"
-              disabled={students.length === 0}
+              disabled={rosterStudents.length === 0}
             />
           ) : null
         }
       >
-        {classReady && students.length > 0 ? <AttendanceCounter counts={marking.counts} /> : null}
+        {classReady && rosterStudents.length > 0 ? <AttendanceCounter counts={marking.counts} /> : null}
       </PageHeader>
 
       <div className="space-y-3 px-4 pt-3">
@@ -491,14 +510,14 @@ function MarkAttendanceScreen() {
           value={query}
           onChange={setQuery}
           resultCount={filteredStudents.length}
-          totalCount={students.length}
+          totalCount={rosterStudents.length}
         />
 
         <QuickActions
           onMarkAllPresent={() => handleMarkAll('PRESENT')}
           onMarkAllAbsent={() => handleMarkAll('ABSENT')}
           onReset={() => setDialog({ kind: 'confirm-reset' })}
-          disabled={saving || students.length === 0}
+          disabled={saving || rosterStudents.length === 0}
         />
       </div>
 
@@ -511,6 +530,11 @@ function MarkAttendanceScreen() {
           <EmptyState
             title="No students found"
             description="Run supabase/setup.sql in the Supabase SQL editor to seed the class list."
+          />
+        ) : rosterStudents.length === 0 ? (
+          <EmptyState
+            title={`No students enrolled in ${subject?.code ?? 'this subject'}`}
+            description="This is an elective. Add its enrolment rows to subject_enrollments in Supabase."
           />
         ) : filteredStudents.length === 0 ? (
           <EmptyState
@@ -538,7 +562,7 @@ function MarkAttendanceScreen() {
         counts={marking.counts}
         saving={saving}
         editing={editing}
-        disabled={!classReady || students.length === 0}
+        disabled={!classReady || rosterStudents.length === 0}
         disabledReason={!classReady ? 'Select a subject and hour to save.' : null}
         onSave={() => setDialog({ kind: 'confirm-save' })}
       />

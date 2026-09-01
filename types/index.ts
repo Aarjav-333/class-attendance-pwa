@@ -19,7 +19,12 @@ export interface Subject {
   id: string;
   code: string;
   name: string;
+  /** Electives are sat by an enrolled subset of the class, not everyone. */
+  elective: boolean;
 }
+
+/** subjectId -> the students enrolled in that elective. */
+export type EnrollmentMap = Record<string, string[]>;
 
 /**
  * Which way round attendance is being marked.
@@ -93,8 +98,8 @@ export function toStudent(row: Pick<StudentRow, 'id' | 'roll_number' | 'name'>):
   return { id: row.id, rollNumber: row.roll_number, name: row.name };
 }
 
-export function toSubject(row: Pick<SubjectRow, 'id' | 'code' | 'name'>): Subject {
-  return { id: row.id, code: row.code, name: row.name };
+export function toSubject(row: Pick<SubjectRow, 'id' | 'code' | 'name' | 'elective'>): Subject {
+  return { id: row.id, code: row.code, name: row.name, elective: row.elective };
 }
 
 export function toSessionSummary(row: AttendanceSessionSummaryRow): SessionSummary {
