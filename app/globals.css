@@ -1,0 +1,143 @@
+@tailwind base;
+@tailwind components;
+@tailwind utilities;
+
+@layer base {
+  :root {
+    color-scheme: light dark;
+
+    --c-bg: 244 245 248;
+    --c-surface: 255 255 255;
+    --c-elevated: 255 255 255;
+    --c-line: 226 229 235;
+    --c-fg: 17 20 26;
+    --c-muted: 92 100 114;
+    --c-faint: 138 146 160;
+    --c-brand: 67 85 220;
+    --c-brand-fg: 255 255 255;
+    --c-brand-soft: 232 234 253;
+    --c-present: 12 138 84;
+    --c-present-soft: 224 246 235;
+    --c-absent: 199 42 60;
+    --c-absent-soft: 253 231 233;
+  }
+
+  @media (prefers-color-scheme: dark) {
+    :root {
+      --c-bg: 12 14 18;
+      --c-surface: 22 25 31;
+      --c-elevated: 30 34 42;
+      --c-line: 48 53 63;
+      --c-fg: 240 242 246;
+      --c-muted: 158 166 180;
+      --c-faint: 118 126 140;
+      --c-brand: 122 138 255;
+      --c-brand-fg: 12 14 18;
+      --c-brand-soft: 38 44 78;
+      --c-present: 61 199 137;
+      --c-present-soft: 21 51 41;
+      --c-absent: 255 122 138;
+      --c-absent-soft: 62 26 32;
+    }
+  }
+
+  html {
+    -webkit-text-size-adjust: 100%;
+    -webkit-tap-highlight-color: transparent;
+  }
+
+  body {
+    @apply bg-bg text-fg antialiased;
+    font-size: 16px;
+    overscroll-behavior-y: none;
+  }
+
+  /* Inputs at >=16px prevent iOS Safari from zooming on focus. */
+  input,
+  select,
+  textarea,
+  button {
+    font-size: 16px;
+    font-family: inherit;
+  }
+
+  button {
+    touch-action: manipulation;
+  }
+
+  ::selection {
+    background: rgb(var(--c-brand) / 0.22);
+  }
+}
+
+@layer components {
+  .app-shell {
+    /* Dynamic viewport height keeps the layout correct while Safari's bars move. */
+    min-height: 100svh;
+    min-height: 100dvh;
+  }
+
+  .pad-safe-top {
+    padding-top: max(env(safe-area-inset-top), 0px);
+  }
+
+  .pad-safe-bottom {
+    padding-bottom: max(env(safe-area-inset-bottom), 0px);
+  }
+
+  .card {
+    @apply rounded-2xl border border-line bg-surface;
+  }
+
+  .tap {
+    @apply transition-transform duration-100 active:scale-[0.985];
+  }
+
+  .focus-ring {
+    @apply outline-none focus-visible:ring-2 focus-visible:ring-brand focus-visible:ring-offset-2 focus-visible:ring-offset-bg;
+  }
+
+  .btn {
+    @apply inline-flex select-none items-center justify-center gap-2 rounded-xl px-4 text-[15px] font-semibold transition-colors focus-ring tap disabled:pointer-events-none disabled:opacity-50;
+    min-height: 48px;
+  }
+
+  .btn-primary {
+    @apply btn bg-brand text-brand-fg;
+  }
+
+  .btn-secondary {
+    @apply btn border border-line bg-surface text-fg;
+  }
+
+  .btn-ghost {
+    @apply btn text-muted;
+  }
+
+  .btn-danger {
+    @apply btn bg-absent text-white;
+  }
+
+  .segmented {
+    @apply grid gap-1 rounded-2xl border border-line bg-surface p-1;
+  }
+
+  .no-scrollbar::-webkit-scrollbar {
+    display: none;
+  }
+
+  .no-scrollbar {
+    -ms-overflow-style: none;
+    scrollbar-width: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.01ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.01ms !important;
+  }
+}
